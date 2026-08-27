@@ -8,7 +8,7 @@ on:
 jobs:
   run-referral:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 150
     
     steps:
     - name: Setup Python
@@ -27,7 +27,29 @@ jobs:
         import random
         import time
         import os
+        import shutil
+        import string
         from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # Warna dihapus karena GH Actions ga support ANSI
+        # Tapi log structure tetep sama
+        def get_width():
+            return 60  # Fixed width untuk GH Actions
+
+        def banner():
+            w = get_width()
+            line = "═" * (w - 2)
+            print(f"╔{line}╗")
+            title = "⚡ VOLT MULTI-WORKER AUTO REFERRAL ⚡"
+            pad1 = max(0, (w - 4 - len(title)) // 2)
+            pad2 = max(0, (w - 4 - len(title)) - pad1)
+            print(f"║ " + " " * pad1 + f"{title}" + " " * pad2 + f" ║")
+            sub = "✨ SyndicateBot Net • Ecosystem v2.4 ✨"
+            spad1 = max(0, (w - 4 - len(sub)) // 2)
+            spad2 = max(0, (w - 4 - len(sub)) - spad1)
+            print(f"║ " + " " * spad1 + f"{sub}" + " " * spad2 + f" ║")
+            print(f"╚{line}╝")
+            print("─" * w)
 
         def generate_random_user():
             first_names = [
@@ -120,89 +142,87 @@ jobs:
             }
             
             headers = {
-                "User-Agent": "Mozilla/5.0 (Linux; Android 12; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.170 Mobile Safari/537.36 Telegram-Android/12.9.2 (Samsung SM-A217F; Android 12; SDK 31; LOW)",
-                "Accept-Encoding": "gzip, deflate, br, zstd",
-                "Content-Type": "application/json",
-                "sec-ch-ua-platform": '"Android"',
-                "sec-ch-ua": '"Not=A?Brand";v="99", "Android WebView";v="151", "Chromium";v="151"',
-                "sec-ch-ua-mobile": "?1",
-                "origin": "https://volt.crowntasks.xyz",
-                "x-requested-with": "org.telegram.messenger.web",
-                "sec-fetch-site": "same-origin",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-dest": "empty",
-                "referer": "https://volt.crowntasks.xyz/",
-                "accept-language": "en,id-ID;q=0.9,id;q=0.8,en-US;q=0.7",
-                "priority": "u=1, i",
-                "X-Forwarded-For": rand_ip
+                'User-Agent': "Mozilla/5.0 (Linux; Android 12; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.7922.170 Mobile Safari/537.36 Telegram-Android/12.9.2 (Samsung SM-A217F; Android 12; SDK 31; LOW)",
+                'Accept-Encoding': "gzip, deflate, br, zstd",
+                'Content-Type': "application/json",
+                'sec-ch-ua-platform': '"Android"',
+                'sec-ch-ua': '"Not=A?Brand";v="99", "Android WebView";v="151", "Chromium";v="151"',
+                'sec-ch-ua-mobile': "?1",
+                'origin': "https://volt.crowntasks.xyz",
+                'x-requested-with': "org.telegram.messenger.web",
+                'sec-fetch-site': "same-origin",
+                'sec-fetch-mode': "cors",
+                'sec-fetch-dest': "empty",
+                'referer': "https://volt.crowntasks.xyz/",
+                'accept-language': "en,id-ID;q=0.9,id;q=0.8,en-US;q=0.7",
+                'priority': "u=1, i",
+                'X-Forwarded-For': rand_ip
             }
+            
+            result_lines = []
+            result_lines.append(f" │ [{idx}/100] Worker Executing...")
+            result_lines.append(f" │ ├─ ID       : {tid}")
+            result_lines.append(f" │ ├─ Name     : {fn} {ln}")
+            result_lines.append(f" │ ├─ IP Spoof : {rand_ip}")
             
             try:
                 res = requests.post(url, data=json.dumps(payload), headers=headers, timeout=15)
+                
                 if res.status_code in [200, 201]:
                     data = res.json()
                     if data.get("success"):
                         user_data = data.get("user", {})
                         balance = user_data.get("inAppBalance", 0)
-                        return f"[{idx}] ✅ SUCCESS | {fn} {ln} | ID: {tid} | Balance: {balance}"
+                        result_lines.append(f" │ └─ Status   : SUCCESS | Balance: {balance}")
                     else:
-                        return f"[{idx}] ❌ FAILED | {fn} {ln} | Response: {res.text[:100]}"
+                        result_lines.append(f" │ └─ Status   : FAILED | Res: {res.text}")
                 else:
-                    return f"[{idx}] ❌ HTTP {res.status_code} | {fn} {ln}"
+                    result_lines.append(f" │ └─ Status   : HTTP {res.status_code}")
+                    
             except Exception as e:
-                return f"[{idx}] ❌ ERROR: {str(e)[:50]} | {fn} {ln}"
+                result_lines.append(f" │ └─ Error    : {e}")
+                
+            result_lines.append(f" │")
+            return "\n".join(result_lines)
 
         def main():
+            banner()
             url = "https://volt.crowntasks.xyz/api/user/sync"
             ref_id = "ref_7745286578"  # GANTI DENGAN REFERRAL ID KAMU
+            
             total_accounts = 100000
             batch_size = 10
             
-            print("=" * 60)
-            print("VOLT AUTO REFERRAL - GitHub Actions")
-            print(f"Target: {total_accounts} accounts")
-            print(f"Batch: {batch_size} workers parallel")
-            print(f"Referral ID: {ref_id}")
-            print("=" * 60)
-            
-            success = 0
-            failed = 0
-            
             for batch_start in range(1, total_accounts + 1, batch_size):
                 batch_end = min(batch_start + batch_size - 1, total_accounts)
-                print(f"\n▶ BATCH {batch_start} - {batch_end}")
-                print("-" * 40)
-                
+                print(f" │ ▶ STARTING BATCH: {batch_start} to {batch_end}")
+                print(f" │")
+
                 with ThreadPoolExecutor(max_workers=batch_size) as executor:
-                    futures = {executor.submit(execute_worker, idx, url, ref_id): idx 
-                              for idx in range(batch_start, batch_end + 1)}
+                    futures = {executor.submit(execute_worker, idx, url, ref_id): idx for idx in range(batch_start, batch_end + 1)}
                     
                     for future in as_completed(futures):
-                        result = future.result()
-                        print(result)
-                        if "✅" in result:
-                            success += 1
-                        else:
-                            failed += 1
-                
+                        try:
+                            result = future.result()
+                            print(result)
+                        except Exception as e:
+                            print(f" │ Worker Exception: {e}\n │")
+
                 if batch_end < total_accounts:
-                    print(f"\n⏳ Batch {batch_start}-{batch_end} finished! Waiting 60 seconds...")
-                    time.sleep(60)
-            
-            print("\n" + "=" * 60)
-            print(f"🎯 COMPLETED!")
-            print(f"✅ Success: {success}")
-            print(f"❌ Failed: {failed}")
-            print(f"📊 Total: {total_accounts}")
-            print(f"📈 Success Rate: {(success/total_accounts*100):.2f}%")
-            print("=" * 60)
+                    print("─" * get_width())
+                    for s in range(60, 0, -1):
+                        print(f"\r │ ⏳ Batch {batch_start}-{batch_end} Finished! Sleeping {s}s to prevent FloodLimit...", end="", flush=True)
+                        time.sleep(1)
+                    print("\r", end="")
+                    print("─" * get_width())
+
+            print("─" * get_width())
+            print(f" [✔] {total_accounts} Iterations Completed.")
+            print("─" * get_width() + "\n")
 
         if __name__ == "__main__":
             try:
                 main()
             except KeyboardInterrupt:
-                print("\n[!] Terminated by user")
-            except Exception as e:
-                print(f"[!] Fatal Error: {e}")
-                exit(1)
+                print(f"\n[!] Automation session forcefully terminated.")
         EOF
