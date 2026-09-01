@@ -15,6 +15,7 @@ from telethon.sessions import StringSession
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
+# ============ KONFIGURASI ============
 API_ID = 34017330
 API_HASH = 'f37aab7f8d68ce67f1d581a03f3129b9'
 
@@ -27,6 +28,7 @@ ACCOUNTS_FILE = "accounts.json"
 STATE_FILE = "tasks_state.json"
 VALID_COUNTRIES = ["id", "us", "sg", "my", "ph", "vn", "th"]
 
+# ============ WARNA ============
 R = '\033[91m'
 G = '\033[92m'
 Y = '\033[93m'
@@ -35,6 +37,7 @@ C = '\033[96m'
 W = '\033[97m'
 RESET = '\033[0m'
 
+# ============ NETWORK FIX ============
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from requests.adapters import HTTPAdapter
@@ -55,6 +58,7 @@ http_session = create_retry_session()
 def post_request(url, params=None, data=None, headers=None):
     return http_session.post(url, params=params, data=data, headers=headers, timeout=60)
 
+# ============ KRIPTOGRAFI ============
 def get_aes_key(raw_key):
     return hashlib.sha256(raw_key.encode()).digest()
 
@@ -66,6 +70,7 @@ def decrypt_data(encrypted_data, key):
     decrypted = unpad(cipher.decrypt(ct), AES.block_size)
     return decrypted.decode('utf-8')
 
+# ============ PROXY GENERATOR ============
 def generate_proxy():
     session_id = random.randint(1000000, 9999999)
     country = random.choice(VALID_COUNTRIES)
@@ -77,6 +82,7 @@ def generate_proxy():
         'password': "0WvMtqci"
     }
 
+# ============ UNIFIED STATE MANAGEMENT ============
 def load_state():
     if os.path.exists(STATE_FILE):
         try:
@@ -120,18 +126,10 @@ def clear_atf_cache(account_key):
         del state[account_key]['atf_cache']
         save_state(state)
 
+# ============ HELPER FUNCTIONS ============
 def get_timestamp(): return str(int(time.time() * 1000))
 def get_current_time(): return datetime.now().strftime("%H:%M:%S")
 def clear_terminal(): os.system('cls' if os.name == 'nt' else 'clear')
-
-USER_AGENTS = [
-    "Mozilla/5.0 (Linux; Android 14; SM-S918B Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36 Telegram-Android/10.6.1",
-    "Mozilla/5.0 (Linux; Android 14; SM-S911B Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36 Telegram-Android/10.5.0",
-    "Mozilla/5.0 (Linux; Android 13; SM-S908B Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.111 Mobile Safari/537.36 Telegram-Android/10.4.1",
-    "Mozilla/5.0 (Linux; Android 13; SM-A546E Build/TP1A.220624.014) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36 Telegram-Android/10.2.0",
-    "Mozilla/5.0 (Linux; Android 13; Redmi Note 12 Pro Build/TKQ1.221114.001) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.6045.163 Mobile Safari/537.36 Telegram-Android/10.2.0",
-    "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro Build/UQ1A.240205.002) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.143 Mobile Safari/537.36 Telegram-Android/10.7.0"
-]
 
 USER_AGENTS = [
     # Samsung Galaxy S Series
@@ -180,6 +178,13 @@ USER_AGENTS = [
     # Huawei / Honor
     "Mozilla/5.0 (Linux; Android 12; NOH-NX9 Build/HUAWEINOH-N29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.196 Mobile Safari/537.36 Telegram-Android/9.6.0",
     "Mozilla/5.0 (Linux; Android 12; LNA-NX9 Build/HONORLNA-N29) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.5672.162 Mobile Safari/537.36 Telegram-Android/9.5.0"
+]
+
+TASKS = [
+    {"name": "YouTube Like & Comment", "task_id": "youtube_like_comment", "cooldown": 7200, "wait_time": 12},
+    {"name": "Twitter Retweet", "task_id": "twitter_retweet", "cooldown": 7200, "wait_time": 12},
+    {"name": "Website Visit", "task_id": "website_visit", "cooldown": 7200, "wait_time": 15},
+    {"name": "Telegram React Latest", "task_id": "telegram_react_latest", "cooldown": 7200, "wait_time": 5}
 ]
 
 def is_unauthorized_error(response_data):
@@ -294,6 +299,7 @@ async def process_task_auto(account_key, session_headers, init_data, tg_id, base
     
     return current_init_data, current_headers, False
 
+# ============ SATU SIKLUS PER AKUN (TANPA WHILE TRUE DI SINI) ============
 async def process_account_cycle(account_key, decrypted_session, proxy_config, username_hash):
     print(f"\n{C}{'='*60}")
     print(f"{G}⛏️  PROCESSING: {account_key} (@{username_hash}) ⛏️")
@@ -334,6 +340,7 @@ async def process_account_cycle(account_key, decrypted_session, proxy_config, us
                 return
             current_init_data, current_headers, tg_id, username, wallet, public_key = res
 
+        # 1. Process Tasks
         tasks_ready = [task for task in TASKS if get_cooldown_remaining(account_key, task['task_id'], task['cooldown']) == 0]
         for task in tasks_ready:
             new_init, new_headers, needs_refresh = await process_task_auto(account_key, current_headers, current_init_data, tg_id, url, task)
@@ -343,6 +350,7 @@ async def process_account_cycle(account_key, decrypted_session, proxy_config, us
                     current_init_data, current_headers, tg_id, username, wallet, public_key = res
             await asyncio.sleep(2)
         
+        # 2. Sync Wallet
         try:
             resp_sync = post_request(url, params={'action': "sync_wallet", 't': get_timestamp()}, 
                                      data=json.dumps({"initData": current_init_data, "request_id": str(uuid.uuid4()), 
@@ -356,6 +364,7 @@ async def process_account_cycle(account_key, decrypted_session, proxy_config, us
         except Exception as e:
             print(f"{R}[!] Sync Wallet Error: {e}{RESET}")
         
+        # 3. Boost (1 Jam Sekali)
         boost_cd = get_cooldown_remaining(account_key, "boost", 3600)
         if boost_cd == 0:
             print(f"\n{Y}[*] Executing Boost (1x)...{RESET}")
@@ -376,6 +385,7 @@ async def process_account_cycle(account_key, decrypted_session, proxy_config, us
             h, m, s = boost_cd // 3600, (boost_cd % 3600) // 60, boost_cd % 60
             print(f"{Y}[*] Boost cooldown: {h:02d}:{m:02d}:{s:02d}{RESET}")
 
+        # 4. Claim (1 Jam Sekali)
         claim_cd = get_cooldown_remaining(account_key, "claim", 3600)
         if claim_cd == 0:
             print(f"\n{Y}[*] Executing Claim (1x)...{RESET}")
@@ -401,12 +411,11 @@ async def process_account_cycle(account_key, decrypted_session, proxy_config, us
     finally:
         await client.disconnect()
 
-
-
+# ============ MAIN ORCHESTRATOR (LOOP GLOBAL DI SINI) ============
 async def main():
     clear_terminal()
     print(f"{C}============================================={RESET}")
-    print(f"{G}                   ATF  {RESET}")
+    print(f"{G}  ATF MINER MULTI-ACCOUNT (SEQUENTIAL)  {RESET}")
     print(f"{C}============================================={RESET}")
     
     if not os.path.exists(ACCOUNTS_FILE):
@@ -419,6 +428,7 @@ async def main():
     aes_key = get_aes_key(RAW_KEY)
     print(f"{Y}[*] Found {len(accounts)} accounts to process.{RESET}")
     
+    # LOOP GLOBAL: Iterasi semua akun, lalu tidur, lalu ulang
     cycle_count = 1
     while True:
         print(f"\n{C}>>> STARTING GLOBAL CYCLE #{cycle_count} <<<{RESET}")
