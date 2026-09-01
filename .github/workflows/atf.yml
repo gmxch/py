@@ -2,7 +2,7 @@ name: ATF
 
 on:
   schedule:
-    - cron: '0 6,12 * * *'   # Jam 6 dan 12 UTC
+    - cron: '0 6,12 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -26,7 +26,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install telethon requests pycryptodome python-socks 
+        pip install telethon requests pycryptodome python-socks
     
     - name: Restore state cache
       uses: actions/cache@v3
@@ -39,7 +39,9 @@ jobs:
     - name: Run ATF Miner
       env:
         ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
-      run: python atf.py
+        TERM: xterm
+        PYTHONUNBUFFERED: "1"
+      run: python -u atf.py
     
     - name: Save state cache
       if: always()
