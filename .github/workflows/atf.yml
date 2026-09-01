@@ -1,0 +1,58 @@
+name: ATF
+
+on:
+  schedule:
+    - cron: '0 6,12 * * *'   # Jam 6 dan 12 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: atf-miner-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-atf-miner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install telethon requests pycryptodome
+    
+    - name: Restore state cache
+      uses: actions/cache@v3
+      with:
+        path: tasks_state.json
+        key: atf-state-persistent
+        restore-keys: |
+          atf-state-
+    
+    - name: Run ATF Miner
+      env:
+        ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+      run: python atf.py
+    
+    - name: Save state cache
+      if: always()
+      uses: actions/cache/save@v3
+      with:
+        path: tasks_state.json
+        key: atf-state-persistent
+    
+    - name: Upload logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v3
+      with:
+        name: error-logs
+        path: |
+          *.log
+          tasks_state.json
