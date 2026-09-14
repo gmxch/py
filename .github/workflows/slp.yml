@@ -31,4 +31,4 @@ jobs:
         env:
           ACCOUNT_ID: ${{ matrix.account }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
-        run: python3 bot.py
+        run: python3 slp.py
