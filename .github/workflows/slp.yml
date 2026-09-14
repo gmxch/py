@@ -1,0 +1,201 @@
+name: slp
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+jobs:
+  farm:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        account: ["1", "2"]
+      max-parallel: 2
+
+    steps:
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon pycryptodome requests rich
+
+      - name: Run Inline Bot
+        env:
+          ACCOUNT_ID: ${{ matrix.account }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+        run: |
+          python3 - << 'PYTHON_SCRIPT'
+import asyncio, requests, json, urllib.parse, random, sys, os, hashlib, base64
+from telethon import TelegramClient
+from telethon.sessions import StringSession
+from telethon.tl.functions.messages import RequestWebViewRequest
+from rich.console import Console
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import unpad
+
+API_ID = 34017330
+API_HASH = 'f37aab7f8d68ce67f1d581a03f3129b9'
+BOT_USERNAME = 'MineSLPYBot'
+API_URL = "https://sleepymine.xyz/api/db.php"
+
+ENCRYPTED_SESSIONS = {
+    "1": "I0fD00TttMdoimKl5UoWlA==:/ewcH8M6qLM3+oYnq2MAgXMJvbAok7Gm4GyyFv4Vbu2V6EVXvR+H86jai3C+R3VZ+Oue92x52SRuIm97vBDh1I+E8lWvLTcjCgzzjpNdtHaLNZqrpA/5yk1BfVEmgofsOLTXBvrwoI4vFlmMdO4fOPHYl/iZ5pyJpEy87tdKkjs2xXhqw1JzpBgt+OLp26bBG7C8cSXAg9Fbws70j1dd4CiXUyr6JDmnL16mfneOhOjm01eAJ0NWpPyVcKehRRvibTAWSDJBuOaKhuxN65jgYsKBQIyl9MdEDLrQWohbstEB0NO+/jlzTlwFJ6A6ugvkI9zz4dF8BKck4mFxFnYsqkTwJNms7qrBAALaXLseeCjb6I73WKKXoK2yWAq1qtX+py+8iHDdKWxS9wuCNulOd90+fCWap2/XAxzhnvgshPDYvF96PIBIvkNa/J9BWQMkNeRj6qfTpLZdw3MmNiiAuFltzLFJ5sd5Lklj0ihGzBg=",
+    "2": "At6yFHOv8wiphBY90gDOPQ==:Jg4FCjhi4pbaOCZEBB00oO7Btw23fyO0F3jJyFFnY2a3nUsWuN6CONgAJacqYNzTASZTJ01PLWWCvUorglhYMMAuZ7CoBAreLqb8dRxxO8qUhQN0Ayk7pfDVfL/dKbA/UGtWn6toBDaqAxFvCuu0ZfWrJlMzK5X/x9nO4XkJWjRuYhzxNM9IEtqJDiEf6thgbqNCEHbQ0RbLdB5q7GrDsfYIelSddDOT0vrDU0MZs6pGhVpwRMm0lcW8EwWKBXUTaFZNHyNvdixN3cWgjgo5s9n22k4EzTUZgcfHSTkZvBaBFQbdoGQsYd4Jx10v6cmvg19wpnH8gZt6DRKFKWqN90WYBiRfXenF4kVSizzWnjzLliFraHDoCjb21y8hyIk6bAwThvSGPaetFVqFc+u7OQnp+16nqE6HiKTNyhxcL8Be3fJt+sybbrlraPcfJhcKrCBTdmHeu9U3724GL59HzxLSXzra8ZomaSefnHED+x0="
+}
+
+console = Console()
+
+def get_aes_key(raw_key):
+    return hashlib.sha256(raw_key.encode()).digest()
+
+def decrypt_data(encrypted_str, key):
+    iv_b64, ct_b64 = encrypted_str.split(':')
+    cipher = AES.new(key, AES.MODE_CBC, iv=base64.b64decode(iv_b64))
+    return unpad(cipher.decrypt(base64.b64decode(ct_b64)), AES.block_size).decode('utf-8')
+
+class SleepyMineBot:
+    def __init__(self, init_data, uid):
+        self.init_data = init_data
+        self.uid = uid
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Content-Type': 'application/json',
+            'x-telegram-init-data': init_data,
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/125.0.0.0 Mobile Safari/537.36'
+        })
+        
+    def db_request(self, payload):
+        try:
+            resp = self.session.post(API_URL, json=payload, timeout=15)
+            return resp.json() if resp.status_code == 200 else None
+        except:
+            return None
+    
+    def get_profile(self):
+        result = self.db_request({"table": "airdrop_users", "action": "select", "select": "*", "filters": [{"col": "uid", "op": "eq", "val": self.uid}], "single": True})
+        return result.get('data') if result else None
+    
+    def claim_mined(self):
+        for fn in ['claim_mined', 'claim', 'claim_reward']:
+            result = self.db_request({"action": "rpc", "fn": fn, "args": {"uid": self.uid}})
+            if result and result.get('data', {}).get('success'):
+                return result['data']
+        return None
+    
+    def watch_taddy_ad(self):
+        result = self.db_request({"action": "rpc", "fn": "credit_taddy_ad_reward", "args": {"uid": self.uid}})
+        return result.get('data') if result else None
+    
+    def watch_gigapub_ad(self):
+        result = self.db_request({"action": "rpc", "fn": "credit_ad_reward", "args": {"uid": self.uid}})
+        return result.get('data') if result else None
+
+async def get_telegram_data(string_session):
+    client = TelegramClient(StringSession(string_session), API_ID, API_HASH)
+    await client.connect()
+    if not await client.is_user_authorized():
+        console.print("[red]✗ Session invalid[/]")
+        await client.disconnect()
+        return None, None
+    
+    bot = await client.get_input_entity(BOT_USERNAME)
+    try:
+        webview = await client(RequestWebViewRequest(peer=bot, bot=bot, platform='android', url='https://sleepymine.xyz/'))
+        init_data_raw = webview.url.split('tgWebAppData=')[1].split('&tgWebAppVersion')[0]
+        init_data = urllib.parse.unquote(init_data_raw)
+        user_param = urllib.parse.parse_qs(init_data).get('user', [None])[0]
+        user_data = json.loads(user_param) if user_param else {}
+        uid = str(user_data.get('id', '0'))
+    except Exception as e:
+        console.print(f"[red]✗ Webview error: {e}[/]")
+        await client.disconnect()
+        return None, None
+    await client.disconnect()
+    return init_data, uid
+
+async def main():
+    account_id = os.environ.get("ACCOUNT_ID", "1")
+    raw_key = os.environ.get("ENCRYPTION_KEY")
+    
+    if not raw_key:
+        console.print("[red]✗ ENCRYPTION_KEY missing![/]"); return
+    if account_id not in ENCRYPTED_SESSIONS:
+        console.print(f"[red]✗ Account {account_id} not found![/]"); return
+
+    console.print(f"[cyan]🚀 Starting Account: {account_id}[/]")
+    try:
+        aes_key = get_aes_key(raw_key)
+        string_session = decrypt_data(ENCRYPTED_SESSIONS[account_id], aes_key)
+    except Exception as e:
+        console.print(f"[red]✗ Decrypt failed: {e}[/]"); return
+
+    init_data, uid = await get_telegram_data(string_session)
+    if not init_data or not uid:
+        return
+        
+    console.print(f"[green]✓ Logged in! UID: {uid}[/]")
+    bot = SleepyMineBot(init_data, uid)
+    profile = bot.get_profile()
+    if not profile:
+        console.print("[red]✗ Failed to get profile![/]"); return
+    
+    points = float(profile.get('points', 0))
+    unclaimed = float(profile.get('unclaimed_mined', 0))
+    console.print(f"[cyan]📊 Points: {points} | Unclaimed: {unclaimed}[/]")
+    
+    if unclaimed > 0:
+        claim_result = bot.claim_mined()
+        if claim_result:
+            points = claim_result.get('points', points)
+            console.print(f"[green]✓ Claimed! New points: {points}[/]")
+    
+    console.print("[cyan]➤ Starting auto-watch ads...[/]")
+    total_earned, fail_count = 0, 0
+    
+    for i in range(1, 1001):
+        try:
+            success = False
+            if random.random() > 0.3:
+                res = bot.watch_gigapub_ad()
+                if res and res.get('success'):
+                    points = float(res.get('points', points)); total_earned += float(res.get('reward', 0)); fail_count = 0; success = True
+                else:
+                    res = bot.watch_taddy_ad()
+                    if res and res.get('success'):
+                        points = float(res.get('points', points)); total_earned += float(res.get('reward', 0)); fail_count = 0; success = True
+            else:
+                res = bot.watch_taddy_ad()
+                if res and res.get('success'):
+                    points = float(res.get('points', points)); total_earned += float(res.get('reward', 0)); fail_count = 0; success = True
+                else:
+                    res = bot.watch_gigapub_ad()
+                    if res and res.get('success'):
+                        points = float(res.get('points', points)); total_earned += float(res.get('reward', 0)); fail_count = 0; success = True
+
+            if not success:
+                fail_count += 1
+                wait = 120 if fail_count >= 3 else 60
+                console.print(f"[red]✗ Failed ({fail_count}). Waiting {wait}s...[/]")
+                await asyncio.sleep(wait)
+                if fail_count >= 3: fail_count = 0
+                continue
+
+            console.print(f"[green]✓ Ad #{i} | Total: {points} | Earned: {total_earned:.2f}[/]")
+            await asyncio.sleep(random.uniform(50, 75))
+        except Exception as e:
+            console.print(f"[red]✗ Error: {e}[/]")
+            await asyncio.sleep(30)
+
+    console.print(f"[green]🎉 Done! Final points: {points}[/]")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
+PYTHON_SCRIPT
