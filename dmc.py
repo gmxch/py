@@ -45,9 +45,21 @@ const axios = require("axios");
 const fs = require("fs");
 
 const colors = {
-    cyan: "\x1b[36m", reset: "\x1b[0m", bold: "\x1b[1m", yellow: "\x1b[33m", green: "\x1b[32m"
+    cyan: "\x1b[36m", reset: "\x1b[0m", bold: "\x1b[1m", yellow: "\x1b[33m", green: "\x1b[32m", red: "\x1b[31m"
 };
 const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+
+const WARYONO_API_KEY = process.env.WARYONO_API_KEY;
+if (!WARYONO_API_KEY) {
+    console.error("[-] FATAL: WARYONO_API_KEY environment variable is missing.");
+    process.exit(1);
+}
+
+const WARYONO_CREATE  = "https://api.waryono.my.id/in.php";
+const WARYONO_RESULT  = "https://api.waryono.my.id/res.php";
+const TURNSTILE_SITE_KEY = "0x4AAAAAAE5Imx2BMLN5ABSD";
+const TURNSTILE_PAGE_URL = "https://drama.center/";
 
 function getRandomIp() {
   return `${Math.floor(Math.random() * 254) + 1}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 254) + 1}`;
@@ -70,6 +82,76 @@ function saveJson(filepath, data) {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function solveTurnstile() {
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      process.stdout.write(`\r${colors.yellow}[*] Solving Turnstile via Waryono... (attempt ${attempt}/${maxRetries})${colors.reset}      `);
+      const payload = {
+        apikey: WARYONO_API_KEY,
+        methods: "turnstile",
+        domain: "https://drama.center",
+        sitekey: TURNSTILE_SITE_KEY,
+        action: "submit",
+        cdata: "",
+        json: 1
+      };
+      const createRes = await axios.post(WARYONO_CREATE, JSON.stringify(payload), {
+        headers: {
+          "Content-Type": "application/json",
+          "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+        },
+        timeout: 30000,
+        validateStatus: () => true
+      });
+      const createData = createRes.data;
+      if (createRes.status !== 200) {
+        throw new Error(`HTTP ${createRes.status}: ${JSON.stringify(createData).slice(0, 200)}`);
+      }
+      if (!createData || createData.status != 1 || !createData.request) {
+        const errMsg = createData?.request || createData?.message || "Invalid solver response";
+        throw new Error(`Waryono create error: ${errMsg}`);
+      }
+      const taskId = createData.request;
+      for (let i = 0; i < 60; i++) {
+        await sleep(3000);
+        const pollUrl = `${WARYONO_RESULT}?apikey=${WARYONO_API_KEY}&action=get&id=${taskId}&json=1`;
+        const pollRes = await axios.get(pollUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+          },
+          timeout: 30000,
+          validateStatus: () => true
+        });
+        const pollData = pollRes.data;
+        if (!pollData) continue;
+        const tok = String(pollData.request || "");
+        if (pollData.status == 1 && tok.length > 50 && tok.indexOf(".") !== -1
+            && tok.indexOf("ERROR") === -1 && tok.indexOf("PENDING") === -1) {
+          process.stdout.write(`\r${colors.green}[+] Turnstile solved!${colors.reset}                              \n`);
+          return tok;
+        }
+        if (tok.indexOf("CAPCHA_NOT_READY") !== -1 || tok.indexOf("PENDING") !== -1) {
+          process.stdout.write(`\r${colors.yellow}[*] Solving Turnstile... (${i * 3}s)${colors.reset}      `);
+          continue;
+        }
+        if (tok.indexOf("ERROR_CAPTCHA_UNSOLVABLE") !== -1
+            || tok.indexOf("WRONG_CAPTCHA_ID") !== -1
+            || tok.indexOf("ERROR_TOO_MANY_REQUESTS") !== -1
+            || tok.indexOf("ERROR_ZERO_BALANCE") !== -1
+            || tok.indexOf("ERROR") !== -1) {
+          throw new Error(`Waryono fatal: ${tok}`);
+        }
+      }
+      throw new Error("Waryono timeout");
+    } catch (err) {
+      process.stdout.write(`\r${colors.red}[-] Solve attempt ${attempt} failed: ${err.message}${colors.reset}\n`);
+      if (attempt === maxRetries) throw err;
+      await sleep(3000);
+    }
+  }
+}
 
 async function executeSignIn() {
   const accounts = loadJson("bnb.json");
@@ -116,9 +198,23 @@ async function executeSignIn() {
 
     try {
       const signature = await wallet.signMessage(message);
-      const payload = { chain: "ethereum", message: message, signature: signature };
+      
+      // SOLVE TURNSTILE DULU (WAJIB)
+      const captchaToken = await solveTurnstile();
 
-      const authResponse = await axios.post(TARGET_URL, payload, { headers: { ...authHeaders, "x-forwarded-for": getRandomIp() } });
+      const payload = { 
+        chain: "ethereum", 
+        message: message, 
+        signature: signature,
+        gotrue_meta_security: {
+          captcha_token: captchaToken
+        }
+      };
+
+      const authResponse = await axios.post(TARGET_URL, payload, { 
+        headers: { ...authHeaders, "x-forwarded-for": getRandomIp() },
+        timeout: 30000
+      });
       const authData = authResponse.data;
       const user_id = authData.user?.id;
 
@@ -132,7 +228,8 @@ async function executeSignIn() {
         const targetReferral = (i % 10 < 7) ? "__USER_REF_ID__" : "JTXMEM";
         try {
           const refResponse = await axios.post(REF_URL, { referrer_id: targetReferral, referred_id: user_id }, {
-            headers: { "Content-Type": "application/json", "Origin": "https://drama.center", "Referer": "https://drama.center/", "x-forwarded-for": getRandomIp() }
+            headers: { "Content-Type": "application/json", "Origin": "https://drama.center", "Referer": "https://drama.center/", "x-forwarded-for": getRandomIp() },
+            timeout: 30000
           });
           console.log(`[+] Referral Status: ${refResponse.status} OK (Bind to: ${targetReferral})`);
         } catch (refError) {
