@@ -49,7 +49,6 @@ const colors = {
 };
 const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-
 const WARYONO_API_KEY = process.env.WARYONO_API_KEY;
 if (!WARYONO_API_KEY) {
     console.error("[-] FATAL: WARYONO_API_KEY environment variable is missing.");
@@ -59,7 +58,6 @@ if (!WARYONO_API_KEY) {
 const WARYONO_CREATE  = "https://api.waryono.my.id/in.php";
 const WARYONO_RESULT  = "https://api.waryono.my.id/res.php";
 const TURNSTILE_SITE_KEY = "0x4AAAAAAE5Imx2BMLN5ABSD";
-const TURNSTILE_PAGE_URL = "https://drama.center/";
 
 function getRandomIp() {
   return `${Math.floor(Math.random() * 254) + 1}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 254) + 1}`;
@@ -100,7 +98,7 @@ async function solveTurnstile() {
       const createRes = await axios.post(WARYONO_CREATE, JSON.stringify(payload), {
         headers: {
           "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+          "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36"
         },
         timeout: 30000,
         validateStatus: () => true
@@ -119,7 +117,7 @@ async function solveTurnstile() {
         const pollUrl = `${WARYONO_RESULT}?apikey=${WARYONO_API_KEY}&action=get&id=${taskId}&json=1`;
         const pollRes = await axios.get(pollUrl, {
           headers: {
-            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36"
           },
           timeout: 30000,
           validateStatus: () => true
@@ -164,15 +162,30 @@ async function executeSignIn() {
   const tokenMap = {};
   existingTokens.forEach((item) => { if (item.user_id) tokenMap[item.user_id] = item; });
 
+  // ==========================================
+  // FIXED HEADERS (100% MATCH WITH SNIFF)
+  // ==========================================
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZ3hoaXB5bGtvYnlndXZpZWRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNjk5NDksImV4cCI6MjEwMjg0NTk0OX0.P6JmfYhruL3LZGEnfXbS85HE4ABerldH9zyHtWEo3vc";
+  
   const authHeaders = {
-    'sec-ch-ua-platform': '"Android"', 'x-supabase-api-version': "2024-01-01",
-    'sec-ch-ua': '"Chromium";v="152", "Not?A_Brand";v="24", "Android WebView";v="152"',
-    'sec-ch-ua-mobile': "?1", 'x-client-info': "supabase-ssr/0.12.5 createBrowserClient",
+    'sec-ch-ua-platform': '"Android"',
+    'authorization': `Bearer ${ANON_KEY}`, // <--- HEADER KRITIS YANG DITAMBAHKAN
+    'x-supabase-api-version': "2024-01-01",
+    'sec-ch-ua': '"Brave";v="153", "Not_A Brand";v="8", "Chromium";v="153"',
+    'sec-ch-ua-mobile': '?1',
+    'x-client-info': "supabase-ssr/0.12.5 createBrowserClient",
+    'user-agent': "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
     'content-type': "application/json;charset=UTF-8",
-    'apikey': "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRhZ3hoaXB5bGtvYnlndXZpZWRjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyNjk5NDksImV4cCI6MjEwMjg0NTk0OX0.P6JmfYhruL3LZGEnfXbS85HE4ABerldH9zyHtWEo3vc",
-    'origin': "https://drama.center", "x-forwarded-for": getRandomIp(),
-    'sec-fetch-site': "cross-site", 'sec-fetch-mode': "cors", 'sec-fetch-dest': "empty",
-    'referer': "https://drama.center/", 'accept-language': "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7", 'priority': "u=1, i"
+    'apikey': ANON_KEY,
+    'accept': "*/*",
+    'sec-gpc': "1",
+    'origin': "https://drama.center",
+    'sec-fetch-site': "cross-site",
+    'sec-fetch-mode': "cors",
+    'sec-fetch-dest': "empty",
+    'referer': "https://drama.center/",
+    'accept-language': "id-ID,id;q=0.8",
+    'priority': "u=1, i"
   };
 
   const domain = "drama.center";
@@ -198,8 +211,6 @@ async function executeSignIn() {
 
     try {
       const signature = await wallet.signMessage(message);
-      
-      // SOLVE TURNSTILE DULU (WAJIB)
       const captchaToken = await solveTurnstile();
 
       const payload = { 
@@ -215,6 +226,7 @@ async function executeSignIn() {
         headers: { ...authHeaders, "x-forwarded-for": getRandomIp() },
         timeout: 30000
       });
+      
       const authData = authResponse.data;
       const user_id = authData.user?.id;
 
