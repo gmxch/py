@@ -69,7 +69,7 @@ PER_VISIT_LIMIT, PER_VISIT_MIN_MIN, PER_VISIT_MAX_MIN = 10, 3, 4
 GLOBAL_LIMIT, GLOBAL_MIN_MIN, GLOBAL_MAX_MIN = 10, 3, 4
 FAUCET_BATCH_MIN, FAUCET_BATCH_MAX = 100, 200
 
-os.system('cls' if os.name == 'nt' else 'clear')
+# os.system('cls' if os.name == 'nt' else 'clear')
 target_state = {}
 
 def init_target_state(account_key, target_name, username="Unknown"):
