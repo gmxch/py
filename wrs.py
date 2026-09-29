@@ -20,6 +20,8 @@ from telethon.tl.functions.messages import RequestWebViewRequest
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 
+print("🚀 [DEBUG] Script dimulai!", flush=True)
+
 # ==================== DEVICE CONFIG GENERATOR ====================
 def config_device():
     devices = [
@@ -69,20 +71,16 @@ PER_VISIT_LIMIT, PER_VISIT_MIN_MIN, PER_VISIT_MAX_MIN = 10, 3, 4
 GLOBAL_LIMIT, GLOBAL_MIN_MIN, GLOBAL_MAX_MIN = 10, 3, 4
 FAUCET_BATCH_MIN, FAUCET_BATCH_MAX = 100, 200
 
-os.system('cls' if os.name == 'nt' else 'clear')
-print(flush=True)
 target_state = {}
 
 def init_target_state(account_key, target_name, username="Unknown"):
     key = f"{account_key}_{target_name}"
     if key not in target_state:
         target_state[key] = {
-            "account_key": account_key,
-            "target_name": target_name,
-            "account_username": username,
+            "account_key": account_key, "target_name": target_name, "account_username": username,
             "session": None, "init_data": None, "uid": None, "need_relogin": False, "is_dead": False, 
-            "filter_reset_done": False, 
-            "cycle_start": time.monotonic(), "work_seconds": random.randint(WORK_MIN_MINUTES, WORK_MAX_MINUTES) * 60,
+            "filter_reset_done": False, "cycle_start": time.monotonic(), 
+            "work_seconds": random.randint(WORK_MIN_MINUTES, WORK_MAX_MINUTES) * 60,
             "visit_success": 0, "global_counter": 0, "batch_faucet_count": 0, 
             "current_batch_size": random.randint(FAUCET_BATCH_MIN, FAUCET_BATCH_MAX),
             "coin_exhausted": set(), "coin_skip_until": {}
@@ -101,7 +99,6 @@ def parse_telegram_user(init_data: str) -> dict:
 def is_setup_page(html: str) -> bool:
     return bool(html and '/app/setup/account' in html and 'name="wallet"' in html and 'name="username"' in html)
 
-# ==================== AES DECRYPTION ====================
 def get_aes_key(raw_key):
     return hashlib.sha256(raw_key.encode()).digest()
 
@@ -113,45 +110,88 @@ def decrypt_data(encrypted_str, key):
     pt = unpad(cipher.decrypt(ct), AES.block_size)
     return pt.decode('utf-8')
 
-# ==================== MULTI-ACCOUNT JSON MANAGER ====================
+# ==================== MULTI-ACCOUNT JSON MANAGER (DEBUG MODE) ====================
 async def get_all_authorized_clients_from_json():
+    print("🔍 [DEBUG 1] Checking ENCRYPTION_KEY...", flush=True)
     raw_key = os.environ.get("ENCRYPTION_KEY")
     if not raw_key:
-        print("[!] ❌ ENCRYPTION_KEY environment variable not set!")
-        print("[!] 💡 Cara set: export ENCRYPTION_KEY='your_key' (Linux/Mac) atau set ENCRYPTION_KEY=your_key (Windows)")
+        print("[!] ❌ ENCRYPTION_KEY environment variable not set!", flush=True)
         return []
+    print("✅ [DEBUG 2] ENCRYPTION_KEY found.", flush=True)
         
+    print("🔍 [DEBUG 3] Checking full.json existence...", flush=True)
     if not os.path.exists("full.json"):
-        print("[!] ❌ full.json not found!")
+        print("[!] ❌ full.json not found!", flush=True)
         return []
-        
-    with open("full.json", "r") as f:
-        accounts = json.load(f)
+    print("✅ [DEBUG 4] full.json exists.", flush=True)
+    
+    try:
+        print("🔍 [DEBUG 5] Attempting to read and parse full.json...", flush=True)
+        with open("full.json", "r") as f:
+            accounts = json.load(f)
+        print(f"✅ [DEBUG 6] Successfully parsed full.json. Found {len(accounts)} accounts.", flush=True)
+    except json.JSONDecodeError as e:
+        print(f"[!] ❌ full.json is NOT valid JSON! Error: {e}", flush=True)
+        return []
+    except Exception as e:
+        print(f"[!] ❌ Failed to read full.json: {e}", flush=True)
+        return []
         
     if not accounts:
-        print("[!] ❌ No accounts found in full.json!")
+        print("[!] ❌ No accounts found in full.json!", flush=True)
         return []
         
-    print(f"[*] Ditemukan {len(accounts)} akun di full.json. Memverifikasi...\n")
+    print(f"[*] Ditemukan {len(accounts)} akun di full.json. Memverifikasi...\n", flush=True)
     active_clients = []
-    aes_key = get_aes_key(raw_key)
+    
+    try:
+        aes_key = get_aes_key(raw_key)
+        print("✅ [DEBUG 7] AES Key generated.", flush=True)
+    except Exception as e:
+        print(f"[!] ❌ Failed to generate AES key: {e}", flush=True)
+        return []
     
     for account_key, data in accounts.items():
         try:
+            print(f"[*] Memproses akun: {account_key}...", flush=True)
+            
+            if "sess" not in data:
+                print(f"  [❌] Key 'sess' not found for {account_key}. Skipping.", flush=True)
+                continue
+                
+            print(f"  [⏳] Decrypting session for {account_key}...", flush=True)
             decrypted_session = decrypt_data(data["sess"], aes_key)
+            print(f"  [✅] Decryption successful for {account_key}.", flush=True)
+            
+            print(f"  [⏳] Initializing TelegramClient for {account_key}...", flush=True)
             client = TelegramClient(StringSession(decrypted_session), API_ID, API_HASH)
+            
+            # 🔑 KUNCI ANTI-STUCK: Jeda acak sebelum connect agar tidak di-blokir Telegram
+            delay = random.uniform(3.0, 6.0)
+            print(f"  [⏳] Waiting {delay:.1f}s before connecting to Telegram...", flush=True)
+            await asyncio.sleep(delay)
+            
+            print(f"  [⏳] Connecting to Telegram for {account_key}...", flush=True)
             await client.connect()
+            print(f"  [✅] Connected to Telegram for {account_key}.", flush=True)
+            
             if await client.is_user_authorized():
                 me = await client.get_me()
                 username = me.username or me.first_name or str(me.id)
-                print(f"  [✅] @{username} ({account_key})")
+                print(f"  [✅] @{username} ({account_key}) berhasil connect.", flush=True)
                 active_clients.append((client, account_key, username))
             else:
-                print(f"  [❌] {account_key} tidak terotorisasi. Lewati.")
+                print(f"  [❌] {account_key} tidak terotorisasi. Lewati.", flush=True)
                 await client.disconnect()
+                
         except Exception as e:
-            print(f"  [❌] Gagal memuat/decrypt {account_key}: {e}")
+            print(f"  [❌] Gagal memuat/decrypt {account_key}: {e}", flush=True)
+            try:
+                await client.disconnect()
+            except:
+                pass
             
+    print(f"✅ [DEBUG 8] Finished processing all accounts. Returning {len(active_clients)} active clients.", flush=True)
     return active_clients
 
 async def get_init_data(client, target, account_key, username):
@@ -169,7 +209,6 @@ async def perform_login(init_data, uid, target, username):
     session = requests.Session()
     if proxy := os.environ.get('PROXY'): 
         session.proxies = {'http': proxy, 'https': proxy}
-        
     session.headers.update({
         'User-Agent': target["user_agent"], 'X-Requested-With': 'org.telegram.messenger.web',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -180,22 +219,18 @@ async def perform_login(init_data, uid, target, username):
         resp = await async_get(session, target["url"], timeout=15)
         csrf_token = session.cookies.get('csrf_cookie_name')
         nonce_match = re.search(r'name="reg_nonce"\s+value="([^"]+)"', resp.text)
-        
         if not csrf_token or not nonce_match: return False, None, None, None
-        
         login_uid = hashlib.md5(str(uid).encode()).hexdigest() if target["name"] in ["MNAC", "MNAF", "VIPC", "EWRS"] else uid
-        
         payload = {'csrf_test_name': csrf_token, 'tg_init_data': init_data, 'reg_nonce': nonce_match.group(1), 'uid': login_uid, 'website_url': ''}
         session.headers.update({'Content-Type': 'application/x-www-form-urlencoded', 'Referer': target["url"] + '/app/dashboard/'})
         resp = await async_post(session, target["url"] + '/app/auth/telegram_login', data=payload, timeout=15, allow_redirects=True)
-        
         if resp.status_code == 200 and ('dashboard' in resp.url.lower() or is_setup_page(resp.text) or 'dashboard' in resp.text.lower()):
             return True, login_uid, resp.text, session
         return False, None, None, None
     except Exception: 
         return False, None, None, None
 
-# ==================== CAPTCHA & FAUCET ====================
+# ==================== CAPTCHA SOLVER ====================
 async def solve_icaptcha(host, data, session, user_agent):
     endpoint = data.get('endpoint')
     token = data.get('token')
@@ -269,13 +304,11 @@ async def _faucet(session, url, init_data, target, account_key):
     state = target_state[f"{account_key}_{target['name']}"]
     username = state["account_username"]
     coin_name = urlparse(url).path.rstrip('/').split('/')[-1].upper()
-    
-    # FIX LOG: Hapus log "Claiming..." yang spam.
 
     state["batch_faucet_count"] += 1
     if state["batch_faucet_count"] >= state["current_batch_size"]:
         sleep_sec = random.randint(10 * 60, 20 * 60)
-        print(f"\n[!] [{account_key}] {target['name']} Batch selesai. Istirahat {sleep_sec/60:.1f} m & relogin...")
+        print(f"\n[!] [{account_key}] {target['name']} Batch selesai. Istirahat {sleep_sec/60:.1f} m & relogin...", flush=True)
         await asyncio.sleep(sleep_sec)
         state["batch_faucet_count"] = 0
         state["current_batch_size"] = random.randint(FAUCET_BATCH_MIN, FAUCET_BATCH_MAX)
@@ -330,9 +363,8 @@ async def _faucet(session, url, init_data, target, account_key):
                 if fail_counter >= 3: break
                 await asyncio.sleep(random.randint(SAFETY_MIN, SAFETY_MAX)); continue
 
-            # FIX LOG: Hanya print jika SUKSES atau ada peringatan penting
             if re.search(r'blacklist|flagged|banned|suspend', text, re.IGNORECASE):
-                print(f"  [🚫 BANNED] [{account_key}] {target['name']} (@{username})")
+                print(f"  [🚫 BANNED] [{account_key}] {target['name']} (@{username})", flush=True)
                 return "banned", None
             
             if re.search(r'Invalid Claim|sufficient|insufficient|does not have|could not be processed|maximum|reached the limit', text, re.IGNORECASE):
@@ -340,8 +372,7 @@ async def _faucet(session, url, init_data, target, account_key):
 
             if icon.lower() == 'success' or re.search(r'success|has been send|has been sent|point', text, re.IGNORECASE):
                 got_success, fail_counter, visit_success, global_counter = True, 0, visit_success + 1, global_counter + 1
-                # FIX LOG: Format ringkas satu baris untuk sukses
-                print(f"  [✅ SUKSES] [{account_key}] {target['name']} | {coin_name} | V:{visit_success}/{PER_VISIT_LIMIT} G:{global_counter}/{GLOBAL_LIMIT}")
+                print(f"  [✅ SUKSES] [{account_key}] {target['name']} | {coin_name} | V:{visit_success}/{PER_VISIT_LIMIT} G:{global_counter}/{GLOBAL_LIMIT}", flush=True)
                 
                 if visit_success >= PER_VISIT_LIMIT: trigger = "per_visit"; break
                 if global_counter >= GLOBAL_LIMIT: trigger = "global"; break
@@ -358,20 +389,20 @@ async def _faucet(session, url, init_data, target, account_key):
 
 # ==================== COOLDOWN & MAIN LOOP ====================
 async def cooldown_sleep(total_seconds: int, label: str):
-    print(f"\n[⏳ COOLDOWN] {label} selama {total_seconds // 60} menit")
+    print(f"\n[⏳ COOLDOWN] {label} selama {total_seconds // 60} menit", flush=True)
     start, last_print = time.monotonic(), time.monotonic()
     while True:
         now, remaining = time.monotonic(), total_seconds - (time.monotonic() - start)
         if remaining <= 0: break
         if now - last_print >= COUNTDOWN_INTERVAL:
-            print(f"  [⏳] Sisa waktu: {int(remaining // 60)} menit..."); last_print = now
+            print(f"  [⏳] Sisa waktu: {int(remaining // 60)} menit...", flush=True); last_print = now
         await asyncio.sleep(min(60, remaining))
-    print(f"  [✅] Cooldown selesai, lanjut kerja.\n")
+    print(f"  [✅] Cooldown selesai, lanjut kerja.\n", flush=True)
 
 async def short_rest_sleep(minutes: int, label: str):
-    print(f"\n[☕ REST] {label} selama {minutes} menit")
+    print(f"\n[☕ REST] {label} selama {minutes} menit", flush=True)
     await asyncio.sleep(minutes * 60)
-    print(f"  [✅] Istirahat selesai.\n")
+    print(f"  [✅] Istirahat selesai.\n", flush=True)
 
 async def wait_for_cooldown(state, target_name):
     elapsed = time.monotonic() - state["cycle_start"]
@@ -385,7 +416,7 @@ async def process_target(client, target, account_key):
     
     while True:
         if state.get("is_dead"):
-            print(f"  [⛔ STOP] [{account_key}] {target['name']} dihentikan permanen.")
+            print(f"  [⛔ STOP] [{account_key}] {target['name']} dihentikan permanen.", flush=True)
             return 
 
         state["cycle_start"] = await wait_for_cooldown(state, target["name"])
@@ -405,7 +436,7 @@ async def process_target(client, target, account_key):
             state["init_data"], state["uid"], state["session"] = init_data, real_uid, session
             
             if is_setup_page(dashboard_html):
-                print(f"  [⚠️ SETUP] [{account_key}] {target['name']} butuh setup manual. Dilewati.")
+                print(f"  [⚠️ SETUP] [{account_key}] {target['name']} butuh setup manual. Dilewati.", flush=True)
                 state["is_dead"] = True
                 continue
             continue
@@ -427,7 +458,7 @@ async def process_target(client, target, account_key):
                     break
             
             if all_filtered_done:
-                print(f"\n  [🔄 RESET] [{account_key}] {target['name']} filter {target['coins_filter']} habis. Reset ke semua koin & relogin...")
+                print(f"\n  [🔄 RESET] [{account_key}] {target['name']} filter {target['coins_filter']} habis. Reset ke semua koin & relogin...", flush=True)
                 target["coins_filter"] = []          
                 state["filter_reset_done"] = True    
                 state["need_relogin"] = True         
@@ -439,7 +470,6 @@ async def process_target(client, target, account_key):
                      and state["coin_skip_until"].get(urlparse(url).path.split('/')[-1].upper(), 0) <= now]
 
         if not claimable:
-            # FIX LOG: Hapus spam "Menunggu 30s". Langsung sleep tanpa print.
             await asyncio.sleep(30)
             continue
 
@@ -465,43 +495,40 @@ async def process_target(client, target, account_key):
 
         await asyncio.sleep(3)
 
-# ==================== MAIN ENTRY ====================
 async def main():
-    print("[*] Memuat akun dari full.json...\n")
+    print("🚀 [DEBUG] Masuk ke fungsi main()", flush=True)
+    print("[*] Memuat akun dari full.json...\n", flush=True)
+    
     active_clients = await get_all_authorized_clients_from_json()
     if not active_clients:
-        print("[!] Tidak ada session valid yang bisa digunakan. Keluar.")
+        print("[!] Tidak ada session valid yang bisa digunakan. Keluar.", flush=True)
         return
 
-    print("\n[*] Initializing all targets for all accounts sequentially...")
+    print("\n[*] Initializing all targets for all accounts sequentially...", flush=True)
     all_tasks = []
     
     for client, account_key, username in active_clients:
         for target in TARGETS:
             state = init_target_state(account_key, target["name"], username)
-            
             init_data, uid = await get_init_data(client, target, account_key, username)
             if not init_data: continue
-                
             success, real_uid, dashboard_html, session = await perform_login(init_data, uid, target, username)
             if not success: continue
-                
             state["init_data"], state["uid"], state["session"] = init_data, real_uid, session
-            
             if is_setup_page(dashboard_html):
                 state["is_dead"] = True
                 continue
-                
             all_tasks.append(process_target(client, target, account_key))
 
     if not all_tasks: 
-        print("\n[!] Tidak ada target yang berhasil diinisialisasi. Keluar."); return
+        print("\n[!] Tidak ada target yang berhasil diinisialisasi. Keluar.", flush=True)
+        return
 
-    print(f"\n▶️ Memulai eksekusi PARALEL untuk {len(all_tasks)} task...\n")
+    print(f"\n▶️ Memulai eksekusi PARALEL untuk {len(all_tasks)} task...\n", flush=True)
     await asyncio.gather(*all_tasks)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n\n⛔ Script dihentikan secara manual.")
+        print("\n\n⛔ Script dihentikan secara manual.", flush=True)
