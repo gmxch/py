@@ -1,0 +1,33 @@
+name: wrs
+
+on:
+  workflow_dispatch:
+    inputs:
+      proxy:
+        description: 'Proxy URL (http://user:pass@host:port)'
+        required: true
+        type: string
+
+jobs:
+  farm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install telethon pycryptodome requests
+
+      - name: Run Bot
+        env:
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          PROXY: ${{ inputs.proxy }}
+        run: python3 wrs.py
