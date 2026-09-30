@@ -64,8 +64,8 @@ API_HASH = 'f37aab7f8d68ce67f1d581a03f3129b9'
 
 # ==================== COOLDOWN & BATCH CONFIG ====================
 WORK_MIN_MINUTES, WORK_MAX_MINUTES = 45, 50
-REST_MIN_MINUTES, REST_MAX_MINUTES = 260, 360
-COUNTDOWN_INTERVAL = 30 * 60
+REST_MIN_MINUTES, REST_MAX_MINUTES = 30, 60
+COUNTDOWN_INTERVAL = 10 * 60
 CLAIM_DELAY, SAFETY_MIN, SAFETY_MAX = 15, 3, 5
 PER_VISIT_LIMIT, PER_VISIT_MIN_MIN, PER_VISIT_MAX_MIN = 10, 3, 4
 GLOBAL_LIMIT, GLOBAL_MIN_MIN, GLOBAL_MAX_MIN = 10, 3, 4
@@ -470,7 +470,9 @@ async def process_target(client, target, account_key):
                      and state["coin_skip_until"].get(urlparse(url).path.split('/')[-1].upper(), 0) <= now]
 
         if not claimable:
-            await asyncio.sleep(30)
+            print(f"  [⏳ IDLE] [{account_key}] {target['name']} tidak ada koin tersedia. Reset timer & tunggu 5 menit...", flush=True)
+            await asyncio.sleep(5 * 60) 
+            state["cycle_start"] = time.monotonic()
             continue
 
         total_success = 0
