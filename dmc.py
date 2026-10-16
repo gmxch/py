@@ -81,6 +81,7 @@ const LOCAL_API_URL = "https://api.gsectr.my.id/v4";
 const LOCAL_CLIENT_KEY = "__LOCAL_CLIENT_KEY__";
 const TURNSTILE_SITE_KEY = "0x4AAAAAAE5Imx2BMLN5ABSD";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_yQmoWaeRtZy8i5p75dcNAQ_SnRxhjDv";
+const TOKEN_FILE = "2token.json";
 
 const DEVICES = [
   { model: "SM-A217F", android: "12", chrome: "136" },
