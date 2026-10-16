@@ -1,0 +1,39 @@
+name: Drama Center Auto Watch
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Ethers.js
+        run: npm install ethers
+
+      - name: Generate Wallets
+        run: node dmc.js 5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python Dependencies
+        run: pip install aiohttp
+
+      - name: Run Script
+        env:
+          USER_REFERRAL_ID: ${{ secrets.USER_REFERRAL_ID }}
+          LOCAL_CLIENT_KEY: ${{ secrets.LOCAL_CLIENT_KEY }}
+        run: python dmc.py
