@@ -18,8 +18,8 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Ethers.js
-        run: npm install ethers
+      - name: Install Node Dependencies
+        run: npm install ethers axios
 
       - name: Generate Wallets
         run: node dmc.js 5
