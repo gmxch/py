@@ -1,4 +1,4 @@
-name: Drama Center Auto Watch
+name: dmc
 
 on:
   schedule:
