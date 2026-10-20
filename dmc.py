@@ -24,6 +24,7 @@ SUPABASE_URL = "https://tagxhipylkobyguviedc.supabase.co"
 USER_REFERRAL_ID = os.getenv("USER_REFERRAL_ID")
 USER_REFERRAL_URI = f"https://drama.center/?ref={USER_REFERRAL_ID}"
 LOCAL_CLIENT_KEY = os.getenv("LOCAL_CLIENT_KEY")
+PROXY_URL = os.getenv("PROXY_URL") or "http://2a1t50x1k4p5:NH5jJN8JzQPxw2kn@gate-us.vaultproxies.com:30"
 
 
 class C:
@@ -82,6 +83,28 @@ const LOCAL_CLIENT_KEY = "__LOCAL_CLIENT_KEY__";
 const TURNSTILE_SITE_KEY = "0x4AAAAAAE5Imx2BMLN5ABSD";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_yQmoWaeRtZy8i5p75dcNAQ_SnRxhjDv";
 const TOKEN_FILE = "2token.json";
+
+// ===== PROXY (dari env) — hanya untuk drama.center =====
+const PROXY_URL = process.env.PROXY_URL || "";
+const PROXY_CFG = (() => {
+  if (!PROXY_URL) return {};
+  try {
+    const u = new URL(PROXY_URL);
+    return {
+      proxy: {
+        host: u.hostname,
+        port: parseInt(u.port) || 80,
+        protocol: u.protocol.replace(":", ""),
+        ...(u.username ? {
+          auth: {
+            username: decodeURIComponent(u.username),
+            password: decodeURIComponent(u.password)
+          }
+        } : {})
+      }
+    };
+  } catch (e) { return {}; }
+})();
 
 const DEVICES = [
   { model: "SM-A217F", android: "12", chrome: "136" },
@@ -142,6 +165,7 @@ function decodeWalletFromCookie(cookieStr) {
   } catch (e) { return null; }
 }
 
+// ---- Solver: TANPA PROXY (pakai IP asli) ----
 async function solveTurnstile(profile, websiteUrl, websiteKey) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
@@ -152,10 +176,7 @@ async function solveTurnstile(profile, websiteUrl, websiteKey) {
           websiteUrl: "https://drama.center",
           websiteKey: TURNSTILE_SITE_KEY
         },
-        data: {
-          debug: true,
-          timeout: 50000
-        }
+        data: { debug: true, timeout: 50000 }
       };
 
       const createRes = await axios.post(LOCAL_API_URL + "/createTask", createPayload, {
@@ -165,12 +186,11 @@ async function solveTurnstile(profile, websiteUrl, websiteKey) {
           "User-Agent": profile.ua 
         },
         timeout: 30000
+        // TANPA PROXY (solver)
       });
 
       const taskId = createRes.data?.taskId;
-      if (!taskId) {
-        throw new Error("Invalid response: " + JSON.stringify(createRes.data));
-      }
+      if (!taskId) throw new Error("Invalid response: " + JSON.stringify(createRes.data));
 
       for (let i = 0; i < 60; i++) {
         await sleep(2000);
@@ -181,18 +201,12 @@ async function solveTurnstile(profile, websiteUrl, websiteKey) {
             "User-Agent": profile.ua 
           },
           timeout: 30000
+          // TANPA PROXY (solver)
         });
-
         const resData = pollRes.data;
         const status = resData.status;
-
-        if (status === "ready") {
-          return resData.solution?.token || resData.solution; 
-        }
-        
-        if (status === "error") {
-          throw new Error(`API Error: ${resData.err?.msg || resData.err?.usr || "Unknown error"}`);
-        }
+        if (status === "ready") return resData.solution?.token || resData.solution;
+        if (status === "error") throw new Error(`API Error: ${resData.err?.msg || resData.err?.usr || "Unknown error"}`);
       }
       throw new Error("Timeout waiting for captcha");
     } catch (err) {
@@ -208,7 +222,7 @@ async function bindOne(acc, index, total) {
   const profile = generateProfile();
 
   console.log(`\n${colors.cyan}━━━ [${index + 1}/${total}] ${shortAddr(address)} ━━━${colors.reset}`);
-  console.log(`${colors.gray}  Profile: Chrome/${profile.chromeVer}.0.0.0${colors.reset}`);
+  console.log(`${colors.gray}  Profile: Chrome/${profile.chromeVer}.0.0.0 | Proxy(drama.center): ${PROXY_URL ? PROXY_URL.split('@').pop() : 'none'}${colors.reset}`);
 
   const anonHeaders = {
     'sec-ch-ua-platform': '"Android"', 'sec-ch-ua': profile.sec_ch_ua, 'sec-ch-ua-mobile': "?1",
@@ -219,12 +233,14 @@ async function bindOne(acc, index, total) {
     "x-forwarded-for": getRandomIp()
   };
 
-  console.log(`  ${colors.cyan}[i/4] Minta nonce...${colors.reset}`);
+  console.log(`  ${colors.cyan}[i/4] Minta nonce (via proxy)...${colors.reset}`);
   let nonce = null, usedRef = null;
   const refs = ["__USER_REF_ID__", "RS2C2Z"].filter((v, idx, arr) => arr.indexOf(v) === idx);
   for (const tryRef of refs) {
     try {
-      const r = await axios.post("https://drama.center/api/referrals/intent", { referrer: tryRef }, { headers: anonHeaders, timeout: 45000, validateStatus: () => true });
+      const r = await axios.post("https://drama.center/api/referrals/intent",
+        { referrer: tryRef },
+        { headers: anonHeaders, timeout: 45000, validateStatus: () => true, ...PROXY_CFG });   // PROXY
       nonce = r.data?.data?.nonce;
       if (nonce) { usedRef = tryRef; break; }
     } catch (e) {}
@@ -233,7 +249,7 @@ async function bindOne(acc, index, total) {
   if (!nonce) { console.log(`    ${colors.red}✗ Nonce GAGAL${colors.reset}`); return { status: "nonce_fail" }; }
   console.log(`    ${colors.green}✓ Nonce OK${colors.reset}`);
 
-  console.log(`  ${colors.yellow}⏳ Meminta token Turnstile...${colors.reset}`);
+  console.log(`  ${colors.yellow}⏳ Meminta token Turnstile (tanpa proxy)...${colors.reset}`);
   let captchaToken;
   try {
     captchaToken = await solveTurnstile(profile);
@@ -255,14 +271,17 @@ async function bindOne(acc, index, total) {
     'origin': "https://drama.center", 'referer': "__USER_URI__", 'User-Agent': profile.ua
   };
 
+  console.log(`  ${colors.cyan}[ii/4] Login Supabase web3 (tanpa proxy)...${colors.reset}`);
   let authData = null;
   let loginErrMsg = "";
   for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
     try {
-      const r = await axios.post("https://tagxhipylkobyguviedc.supabase.co/auth/v1/token?grant_type=web3", {
-        chain: "ethereum", message, signature,
-        gotrue_meta_security: { captcha_token: captchaToken }
-      }, { headers: authHeaders, timeout: 30000, validateStatus: () => true });
+      const r = await axios.post(
+        "https://tagxhipylkobyguviedc.supabase.co/auth/v1/token?grant_type=web3",
+        { chain: "ethereum", message, signature, gotrue_meta_security: { captcha_token: captchaToken } },
+        { headers: authHeaders, timeout: 30000, validateStatus: () => true }
+        // Supabase BYPASS proxy
+      );
       if (r.data?.user?.id) { authData = r.data; break; }
       loginErrMsg = JSON.stringify(r.data).slice(0, 200);
       if ((r.data?.code || "").includes("captcha") || (r.data?.msg || "").includes("captcha") || (r.data?.message || "").includes("captcha")) {
@@ -280,7 +299,6 @@ async function bindOne(acc, index, total) {
   const cookieStr = buildCookieString(authData);
   const deviceId = uuidv4();
   const realWallet = decodeWalletFromCookie(cookieStr) || address;
-  console.log(`  ${colors.green}✓ Device (200)${colors.reset}`);
 
   const baseHeaders = {
     'sec-ch-ua': profile.sec_ch_ua, 'sec-ch-ua-mobile': "?1", 'sec-ch-ua-platform': '"Android"',
@@ -290,15 +308,20 @@ async function bindOne(acc, index, total) {
     'apikey': SUPABASE_PUBLISHABLE_KEY, "Cookie": cookieStr
   };
 
+  console.log(`  ${colors.cyan}[iii/4] Bind referral (via proxy)...${colors.reset}`);
   let bindSuccess = false;
   try {
-    const r = await axios.post("https://drama.center/api/referrals", { nonce }, { headers: baseHeaders, timeout: 30000, validateStatus: () => true });
+    const r = await axios.post("https://drama.center/api/referrals", { nonce },
+      { headers: baseHeaders, timeout: 30000, validateStatus: () => true, ...PROXY_CFG });   // PROXY
     if (r.status === 200 && r.data?.success) bindSuccess = true;
   } catch (e) {}
 
-  try { await axios.post("https://drama.center/api/auth/locale", { locale: "en", timezone: "Asia/Jakarta" }, { headers: baseHeaders, timeout: 20000, validateStatus: () => true }); } catch (e) {}
-  try { await axios.get("https://drama.center/api/auth/me", { headers: baseHeaders, timeout: 20000, validateStatus: () => true }); } catch (e) {}
-  try { await axios.post("https://drama.center/api/auth/device", { deviceId }, { headers: baseHeaders, timeout: 20000, validateStatus: () => true }); } catch (e) {}
+  console.log(`  ${colors.cyan}[iv/4] Setup device (via proxy)...${colors.reset}`);
+  try { await axios.post("https://drama.center/api/auth/locale", { locale: "en", timezone: "Asia/Jakarta" }, { headers: baseHeaders, timeout: 20000, validateStatus: () => true, ...PROXY_CFG }); } catch (e) {}
+  try { await axios.get("https://drama.center/api/auth/me", { headers: baseHeaders, timeout: 20000, validateStatus: () => true, ...PROXY_CFG }); } catch (e) {}
+  try { await axios.post("https://drama.center/api/auth/device", { deviceId }, { headers: baseHeaders, timeout: 20000, validateStatus: () => true, ...PROXY_CFG }); } catch (e) {}
+
+  console.log(`  ${colors.green}✓ Bind ${bindSuccess ? 'OK' : 'skip (existing)'}${colors.reset}`);
 
   return {
     status: bindSuccess ? "bind_ok" : "bind_fail_existing",
@@ -309,6 +332,9 @@ async function bindOne(acc, index, total) {
 async function executeSignIn() {
   const bnb = loadJson("2bnb.json");
   if (bnb.length === 0) { console.log("[-] 2bnb.json empty"); process.exit(1); }
+
+  if (PROXY_URL) console.log(`[proxy] ${PROXY_URL.split('@').pop()} (drama.center only; solver & supabase tanpa proxy)`);
+  else console.log(`[proxy] none`);
 
   const existingTokens = loadJson(TOKEN_FILE);
   const tokenMap = {};
@@ -347,7 +373,6 @@ async function executeSignIn() {
     } else {
       loginFail++;
     }
-
     if (i < toBind.length - 1) {
       const cooldown = 8 + Math.floor(Math.random() * 7);
       process.stdout.write(`  ${colors.gray}⏳ Delay ${cooldown}s...${colors.reset}`);
@@ -440,6 +465,7 @@ async def refresh_one_token(session, account):
             json={"refresh_token": refresh_token},
             headers=headers,
             timeout=aiohttp.ClientTimeout(total=15)
+            # Supabase BYPASS proxy (proxy IPv6 gagal ke supabase)
         ) as r:
             if r.status != 200:
                 text = await r.text()
@@ -458,7 +484,7 @@ async def refresh_all_tokens():
     print(f"\n{C.CYAN}╔══════════════════════════════════════════════════════╗{C.RESET}")
     print(f"{C.CYAN}║{C.BOLD}{C.WHITE}   AUTO REFRESH TOKEN{' ' * 32}{C.CYAN}║{C.RESET}")
     print(f"{C.CYAN}╚══════════════════════════════════════════════════════╝{C.RESET}")
-    print(f"  {C.GRAY}Total: {len(accounts)} token{C.RESET}\n")
+    print(f"  {C.GRAY}Total: {len(accounts)} token (Supabase bypass proxy){C.RESET}\n")
 
     success = 0; fail = 0; updated = []
 
@@ -516,7 +542,10 @@ async def process_account_tick(batch_id, session, account_data, all_progress, pr
     await global_pause.wait()
     headers = get_headers(token)
     try:
-        async with session.get("https://drama.center/api/auth/me", headers=headers, timeout=10) as auth_res:
+        async with session.get(
+            "https://drama.center/api/auth/me",
+            headers=headers, timeout=10, proxy=PROXY_URL
+        ) as auth_res:
             auth_json = await auth_res.json()
             if not auth_json.get("success"): return
             user_info = auth_json.get("user", {})
@@ -538,7 +567,10 @@ async def process_account_tick(batch_id, session, account_data, all_progress, pr
 
     await global_pause.wait()
     try:
-        async with session.get("https://drama.center/api/dramas?sort=popular&limit=1000&language=en", headers=headers, timeout=10) as res:
+        async with session.get(
+            "https://drama.center/api/dramas?sort=popular&limit=1000&language=en",
+            headers=headers, timeout=10, proxy=PROXY_URL
+        ) as res:
             res_json = await res.json()
             dramas_data = res_json.get("data", [])
     except Exception: return
@@ -548,7 +580,10 @@ async def process_account_tick(batch_id, session, account_data, all_progress, pr
         drama_id = drama["id"]
         if account_progress.get(drama_id, {}).get("completed"): continue
         try:
-            async with session.get(f"https://drama.center/api/dramas/{drama_id}", headers=headers, timeout=10) as ep_res:
+            async with session.get(
+                f"https://drama.center/api/dramas/{drama_id}",
+                headers=headers, timeout=10, proxy=PROXY_URL
+            ) as ep_res:
                 ep_json = await ep_res.json()
                 episodes = ep_json.get("data", {}).get("episodes", [])
         except Exception: continue
@@ -565,14 +600,21 @@ async def process_account_tick(batch_id, session, account_data, all_progress, pr
         ep_number = ep_idx + 1
         try:
             await global_pause.wait()
-            async with session.post(f"https://drama.center/api/dramas/{drama_id}/episodes/watch-tick", headers=headers, json={"episodeId": ep_id, "deviceId": device_id}, timeout=10) as tick_res:
+            async with session.post(
+                f"https://drama.center/api/dramas/{drama_id}/episodes/watch-tick",
+                headers=headers, json={"episodeId": ep_id, "deviceId": device_id},
+                timeout=10, proxy=PROXY_URL
+            ) as tick_res:
                 tick_json = await tick_res.json()
                 tick_data = tick_json.get("data", {})
                 credited = tick_data.get("credited", 0)
                 reject_reason = tick_data.get("rejectReason")
                 
                 if credited > 0:
-                    async with session.post("https://drama.center/api/watch-reward/collect", headers=headers, json={}, timeout=10) as collect_res:
+                    async with session.post(
+                        "https://drama.center/api/watch-reward/collect",
+                        headers=headers, json={}, timeout=10, proxy=PROXY_URL
+                    ) as collect_res:
                         collect_data = (await collect_res.json()).get("data", {})
                         print(f"{C.CYAN}[Batch {batch_id}] [{acc_label[:14]}] {C.GREEN}✅ Ep {ep_number}/{total_episodes} | +{credited} | Total: {collect_data.get('totalToday', 0)}{C.RESET}")
                     async with progress_lock:
@@ -623,7 +665,14 @@ async def batch_worker(batch_id, batch_accounts, session, all_progress, progress
 
 async def main():
     clear_screen()
-    print(f"\n{C.CYAN}=== AUTO ==={C.RESET}\n")
+    print(f"\n{C.CYAN}=== AUTO ==={C.RESET}")
+    if PROXY_URL:
+        print(f"{C.GREEN}✓ PROXY_URL aktif: {PROXY_URL.split('@')[-1]}{C.RESET}")
+        print(f"{C.GRAY}  → drama.center: PROXY{C.RESET}")
+        print(f"{C.GRAY}  → solver & supabase: tanpa proxy (IP asli){C.RESET}")
+    else:
+        print(f"{C.YELLOW}⚠ PROXY_URL tidak diset — jalan pakai IP asli{C.RESET}")
+    print()
 
     if os.path.exists(BNB_FILE) and os.path.exists(TOKEN_FILE):
         try:
@@ -670,7 +719,7 @@ async def main():
             async with capped_lock:
                 if len(capped_set) >= total_acc:
                     print(f"\n{C.RED}{C.BOLD}🚨 SEMUA AKUN CAPPED!{C.RESET}")
-                    print(f"{C.RED}🚨 GitHub Actions tidak mendukung input manual. Menghentikan script...{C.RESET}")
+                    print(f"{C.RED}Menghentikan script...{C.RESET}")
                     sys.exit(1)
 
             print(f"\n{C.MAGENTA}╔══════════════════════════════════════════════════════╗{C.RESET}")
@@ -694,7 +743,6 @@ async def main():
             
             done, pending = await asyncio.wait(workers + [regen_task], return_when=asyncio.FIRST_COMPLETED)
             
-            # 1. CLEANUP OTOMATIS
             if dead_tokens:
                 print(f"\n{C.YELLOW}🧹 Membersihkan {len(dead_tokens)} akun inactive/capped dari file...{C.RESET}")
                 
